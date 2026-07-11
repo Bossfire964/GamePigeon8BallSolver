@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scale origin="top_left_hole_center">
+  <reference>
+    <hole label="top_left" offset="0,0" />
+    <hole label="top_right" offset="380.65502909315183,0.1014131332320906" />
+    <hole label="bottom_left" offset="0.0304000909596941,744.2017447346327" />
+  </reference>
+  <display screenshot_to_screen_scale="2.0" />
+</scale>

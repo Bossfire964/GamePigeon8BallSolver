@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<targets origin="top_left_hole_center">
+  <!-- Example: <target label="practice_target" point="200,300" /> -->
+  <target label="top_left_right" point="20,0" />
+  <target label="top_left_left" point="0,20" />
+  <target label="top_right_right" point="360,0" />
+  <target label="top_right_left" point="380,20" />
+  <target label="bottom_right_right" point="380,725" />
+  <target label="bottom_right_left" point="360,750" />
+  <target label="bottom_left_right" point="20,750" />
+  <target label="bottom_left_left" point="0,725" />
+</targets>

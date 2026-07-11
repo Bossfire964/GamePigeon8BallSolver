@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<colors>
+  <color name="table_background_gray" rgb="200,200,200" tolerance="55" neutral_tolerance="10" min="145" max="230" />
+  <color name="table_rail_brown" rgb="90,55,55" tolerance="55" red_min="45" red_max="150" green_min="25" green_max="95" blue_min="25" blue_max="95" red_over_green="10" green_blue_tolerance="35" />
+</colors>
