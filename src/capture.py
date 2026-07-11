@@ -10,11 +10,12 @@ from pathlib import Path
 from main import run_pipeline
 
 
+# Captures a screenshot to the requested output path.
 def _capture_screen(output_path: str | Path) -> None:
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    outputPath = Path(output_path)
+    outputPath.parent.mkdir(parents=True, exist_ok=True)
     try:
-        subprocess.run(["screencapture", "-x", str(output_path)], check=True)
+        subprocess.run(["screencapture", "-x", str(outputPath)], check=True)
     except (FileNotFoundError, subprocess.CalledProcessError):
         try:
             from PIL import ImageGrab
@@ -25,9 +26,10 @@ def _capture_screen(output_path: str | Path) -> None:
             ) from exc
 
         image = ImageGrab.grab()
-        image.save(output_path)
+        image.save(outputPath)
 
 
+# Captures the screen, solves the shot, and optionally shows the overlay.
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Capture the screen, solve the shot, and optionally display an overlay."

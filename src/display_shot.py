@@ -10,19 +10,21 @@ from xml.etree import ElementTree
 SCALE_XML = Path(__file__).resolve().parent / "scale.xml"
 
 
+# Loads the saved shot result JSON file.
 def _load_result(path: str | Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+# Calculates the overlay window geometry from the shot result.
 def _overlay_geometry(result: dict) -> tuple[float, float, float, float]:
     crop = result.get("screen_crop", {})
-    table_bbox = crop.get("table_bbox")
-    if table_bbox:
+    tableBbox = crop.get("table_bbox")
+    if tableBbox:
         return (
-            float(table_bbox["x1"]),
-            float(table_bbox["y1"]),
-            float(table_bbox["x2"] - table_bbox["x1"] + 1),
-            float(table_bbox["y2"] - table_bbox["y1"] + 1),
+            float(tableBbox["x1"]),
+            float(tableBbox["y1"]),
+            float(tableBbox["x2"] - tableBbox["x1"] + 1),
+            float(tableBbox["y2"] - tableBbox["y1"] + 1),
         )
 
     bounds = result.get("parse_result", {}).get("table_bounds", {})
@@ -36,6 +38,7 @@ def _overlay_geometry(result: dict) -> tuple[float, float, float, float]:
     return 0.0, 0.0, 468.0, 830.0
 
 
+# Reads the screenshot-to-screen scale from the XML config.
 def _scale_from_xml(scale_path: str | Path = SCALE_XML) -> float | None:
     try:
         root = ElementTree.parse(scale_path).getroot()
@@ -56,6 +59,7 @@ def _scale_from_xml(scale_path: str | Path = SCALE_XML) -> float | None:
         return None
 
 
+# Builds the Qt overlay window class for a solved shot.
 class ShotOverlay:
     def __init__(
         self,
@@ -103,10 +107,12 @@ class ShotOverlay:
                 self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
                 self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
+            # Keeps the overlay window above the game window.
             def keep_on_top(self) -> None:
                 self.raise_()
                 self.repaint()
 
+            # Draws the cue and object-ball path lines.
             def paintEvent(self, event) -> None:  # noqa: N802
                 shot = self.result.get("selected_shot")
                 painter = QPainter(self)
@@ -123,37 +129,38 @@ class ShotOverlay:
                         painter.drawText(16, 28, "No selected shot in JSON")
                     return
 
-                cue_line = shot["cue_line"]
-                object_lines = shot.get("object_lines")
-                if object_lines is None:
-                    object_lines = [shot["object_line"]]
+                cueLine = shot["cue_line"]
+                objectLines = shot.get("object_lines")
+                if objectLines is None:
+                    objectLines = [shot["object_line"]]
 
-                cue_pen = QPen(QColor(255, 235, 59, 245))
-                object_pen = QPen(QColor(255, 0, 85, 245))
-                bounce_pen = QPen(QColor(255, 128, 0, 245))
-                for pen in (cue_pen, object_pen, bounce_pen):
+                cuePen = QPen(QColor(255, 235, 59, 245))
+                objectPen = QPen(QColor(255, 0, 85, 245))
+                bouncePen = QPen(QColor(255, 128, 0, 245))
+                for pen in (cuePen, objectPen, bouncePen):
                     pen.setWidthF(self.line_width)
 
-                painter.setPen(cue_pen)
+                painter.setPen(cuePen)
                 painter.drawLine(
-                    int(round(cue_line["start"]["x"] / self.screen_scale)),
-                    int(round(cue_line["start"]["y"] / self.screen_scale)),
-                    int(round(cue_line["end"]["x"] / self.screen_scale)),
-                    int(round(cue_line["end"]["y"] / self.screen_scale)),
+                    int(round(cueLine["start"]["x"] / self.screen_scale)),
+                    int(round(cueLine["start"]["y"] / self.screen_scale)),
+                    int(round(cueLine["end"]["x"] / self.screen_scale)),
+                    int(round(cueLine["end"]["y"] / self.screen_scale)),
                 )
 
-                for index, object_line in enumerate(object_lines):
-                    painter.setPen(object_pen if index == len(object_lines) - 1 else bounce_pen)
+                for index, objectLine in enumerate(objectLines):
+                    painter.setPen(objectPen if index == len(objectLines) - 1 else bouncePen)
                     painter.drawLine(
-                        int(round(object_line["start"]["x"] / self.screen_scale)),
-                        int(round(object_line["start"]["y"] / self.screen_scale)),
-                        int(round(object_line["end"]["x"] / self.screen_scale)),
-                        int(round(object_line["end"]["y"] / self.screen_scale)),
+                        int(round(objectLine["start"]["x"] / self.screen_scale)),
+                        int(round(objectLine["start"]["y"] / self.screen_scale)),
+                        int(round(objectLine["end"]["x"] / self.screen_scale)),
+                        int(round(objectLine["end"]["y"] / self.screen_scale)),
                     )
 
         self.window_class = _Window
 
 
+# Opens the click-through overlay window for a saved shot result.
 def display_shot(
     json_path: str | Path,
     line_width: float = 1.0,
@@ -180,19 +187,19 @@ def display_shot(
         screen = app.primaryScreen()
         scale = float(screen.devicePixelRatio()) if screen is not None else 1.0
 
-    overlay_factory = ShotOverlay(
+    overlayFactory = ShotOverlay(
         result,
         line_width=line_width,
         screen_scale=scale,
         debug=debug,
         click_through=click_through,
     )
-    overlay = overlay_factory.window_class(result)
+    overlay = overlayFactory.window_class(result)
     overlay.show()
     overlay.keep_on_top()
-    keep_on_top_timer = QTimer()
-    keep_on_top_timer.timeout.connect(overlay.keep_on_top)
-    keep_on_top_timer.start(2000)
+    keepOnTopTimer = QTimer()
+    keepOnTopTimer.timeout.connect(overlay.keep_on_top)
+    keepOnTopTimer.start(2000)
     overlay.repaint()
     print(
         "Overlay shown:",
@@ -212,6 +219,7 @@ def display_shot(
     sys.exit(app.exec())
 
 
+# Parses CLI arguments and launches the shot overlay.
 def main() -> None:
     parser = argparse.ArgumentParser(description="Display a click-through shot overlay.")
     parser.add_argument("json", help="Shot result JSON produced by main.py or capture.py.")

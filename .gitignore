@@ -1,0 +1,15 @@
+
+# Ignore all files in the tmp directory
+tmp/*
+!tmp/.gitkeep
+
+# Ignore all files in the logs directory
+__pycache__/
+
+# Ignore all of my files
+run.txt
+LUKE_STYLE.MD
+
+# Mac Specific
+**/.DS_Store
+

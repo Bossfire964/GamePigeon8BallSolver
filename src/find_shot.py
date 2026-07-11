@@ -22,28 +22,34 @@ PICK_SMALLEST_BOUNCES = True
 RAY_LENGTH = 5000.0
 
 
+# Returns a ball or target center as a point.
 def _point(item: dict[str, Any]) -> Point:
     center = item["center"]
     return {"x": float(center["x"]), "y": float(center["y"])}
 
 
+# Measures the distance between two points.
 def _distance(a: Point, b: Point) -> float:
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
 
 
+# Returns the angle from one point to another in degrees.
 def _angle(a: Point, b: Point) -> float:
     return math.degrees(math.atan2(b["y"] - a["y"], b["x"] - a["x"]))
 
 
+# Normalizes the signed difference between two angles.
 def _angle_diff(a: float, b: float) -> float:
     return (a - b + 180) % 360 - 180
 
 
+# Converts an angle into a unit direction vector.
 def _direction(angle: float) -> Point:
     radians = math.radians(angle)
     return {"x": math.cos(radians), "y": math.sin(radians)}
 
 
+# Offsets a point by a scaled direction vector.
 def _add_scaled(point: Point, direction: Point, scale: float) -> Point:
     return {
         "x": point["x"] + direction["x"] * scale,
@@ -51,6 +57,7 @@ def _add_scaled(point: Point, direction: Point, scale: float) -> Point:
     }
 
 
+# Returns the start and end points of a wall segment.
 def _wall_points(wall: dict[str, Any]) -> tuple[Point, Point]:
     return (
         {"x": float(wall["start"]["x"]), "y": float(wall["start"]["y"])},
@@ -58,45 +65,49 @@ def _wall_points(wall: dict[str, Any]) -> tuple[Point, Point]:
     )
 
 
+# Samples evenly spaced points along a segment.
 def _sample_segment(start: Point, end: Point, step: float) -> list[Point]:
     distance = _distance(start, end)
     if distance == 0:
         return [start]
 
-    sample_count = max(1, int(math.ceil(distance / step)))
+    sampleCount = max(1, int(math.ceil(distance / step)))
     return [
         {
-            "x": start["x"] + (end["x"] - start["x"]) * index / sample_count,
-            "y": start["y"] + (end["y"] - start["y"]) * index / sample_count,
+            "x": start["x"] + (end["x"] - start["x"]) * index / sampleCount,
+            "y": start["y"] + (end["y"] - start["y"]) * index / sampleCount,
         }
-        for index in range(sample_count + 1)
+        for index in range(sampleCount + 1)
     ]
 
 
+# Measures the minimum distance from a point to a segment.
 def _point_segment_distance(point: Point, start: Point, end: Point) -> float:
-    segment_x = end["x"] - start["x"]
-    segment_y = end["y"] - start["y"]
-    segment_length_squared = segment_x * segment_x + segment_y * segment_y
-    if segment_length_squared == 0:
+    segmentX = end["x"] - start["x"]
+    segmentY = end["y"] - start["y"]
+    segmentLengthSquared = segmentX * segmentX + segmentY * segmentY
+    if segmentLengthSquared == 0:
         return _distance(point, start)
 
-    point_x = point["x"] - start["x"]
-    point_y = point["y"] - start["y"]
-    projection = (point_x * segment_x + point_y * segment_y) / segment_length_squared
+    pointX = point["x"] - start["x"]
+    pointY = point["y"] - start["y"]
+    projection = (pointX * segmentX + pointY * segmentY) / segmentLengthSquared
     projection = max(0.0, min(1.0, projection))
     closest = {
-        "x": start["x"] + segment_x * projection,
-        "y": start["y"] + segment_y * projection,
+        "x": start["x"] + segmentX * projection,
+        "y": start["y"] + segmentY * projection,
     }
     return _distance(point, closest)
 
 
+# Computes the orientation value for three points.
 def _orientation(a: Point, b: Point, c: Point) -> float:
     return (b["y"] - a["y"]) * (c["x"] - b["x"]) - (
         b["x"] - a["x"]
     ) * (c["y"] - b["y"])
 
 
+# Checks whether a point lies on a segment.
 def _on_segment(a: Point, b: Point, c: Point) -> bool:
     return (
         min(a["x"], c["x"]) - WALL_EPSILON <= b["x"] <= max(a["x"], c["x"]) + WALL_EPSILON
@@ -104,6 +115,7 @@ def _on_segment(a: Point, b: Point, c: Point) -> bool:
     )
 
 
+# Tests whether two segments intersect.
 def _segments_intersect(a: Point, b: Point, c: Point, d: Point) -> bool:
     o1 = _orientation(a, b, c)
     o2 = _orientation(a, b, d)
@@ -123,10 +135,12 @@ def _segments_intersect(a: Point, b: Point, c: Point, d: Point) -> bool:
     return False
 
 
+# Returns the 2D cross product of two vectors.
 def _cross(a: Point, b: Point) -> float:
     return a["x"] * b["y"] - a["y"] * b["x"]
 
 
+# Finds the first intersection between a ray and a wall segment.
 def _ray_segment_intersection(
     origin: Point, direction: Point, wall_start: Point, wall_end: Point
 ) -> tuple[float, Point] | None:
@@ -139,22 +153,23 @@ def _ray_segment_intersection(
         return None
 
     delta = {"x": wall_start["x"] - origin["x"], "y": wall_start["y"] - origin["y"]}
-    ray_t = _cross(delta, segment) / denominator
-    wall_t = _cross(delta, direction) / denominator
-    if ray_t <= WALL_EPSILON or wall_t < -WALL_EPSILON or wall_t > 1 + WALL_EPSILON:
+    rayT = _cross(delta, segment) / denominator
+    wallT = _cross(delta, direction) / denominator
+    if rayT <= WALL_EPSILON or wallT < -WALL_EPSILON or wallT > 1 + WALL_EPSILON:
         return None
 
-    point = _add_scaled(origin, direction, ray_t)
-    return ray_t, point
+    point = _add_scaled(origin, direction, rayT)
+    return rayT, point
 
 
+# Finds the nearest wall hit from a ray cast.
 def _first_wall_hit(
     origin: Point, direction: Point, wall_lines: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
     hits: list[dict[str, Any]] = []
     for wall in wall_lines:
-        wall_start, wall_end = _wall_points(wall)
-        intersection = _ray_segment_intersection(origin, direction, wall_start, wall_end)
+        wallStart, wallEnd = _wall_points(wall)
+        intersection = _ray_segment_intersection(origin, direction, wallStart, wallEnd)
         if intersection is None:
             continue
         distance, point = intersection
@@ -165,62 +180,66 @@ def _first_wall_hit(
     return min(hits, key=lambda hit: hit["distance"])
 
 
+# Checks whether a target lies close enough to a ray path.
 def _target_on_ray(
     origin: Point,
     direction: Point,
     target: Point,
     max_distance: float,
 ) -> tuple[float, float] | None:
-    target_vector = {"x": target["x"] - origin["x"], "y": target["y"] - origin["y"]}
-    along = target_vector["x"] * direction["x"] + target_vector["y"] * direction["y"]
+    targetVector = {"x": target["x"] - origin["x"], "y": target["y"] - origin["y"]}
+    along = targetVector["x"] * direction["x"] + targetVector["y"] * direction["y"]
     if along <= WALL_EPSILON or along > max_distance + WALL_EPSILON:
         return None
 
     closest = _add_scaled(origin, direction, along)
-    miss_distance = _distance(closest, target)
-    return along, miss_distance
+    missDistance = _distance(closest, target)
+    return along, missDistance
 
 
+# Reflects a direction vector across a wall segment.
 def _reflect_direction(direction: Point, wall: dict[str, Any]) -> Point:
-    wall_start, wall_end = _wall_points(wall)
-    wall_vector = {
-        "x": wall_end["x"] - wall_start["x"],
-        "y": wall_end["y"] - wall_start["y"],
+    wallStart, wallEnd = _wall_points(wall)
+    wallVector = {
+        "x": wallEnd["x"] - wallStart["x"],
+        "y": wallEnd["y"] - wallStart["y"],
     }
-    wall_length = math.hypot(wall_vector["x"], wall_vector["y"])
-    if wall_length == 0:
+    wallLength = math.hypot(wallVector["x"], wallVector["y"])
+    if wallLength == 0:
         return {"x": -direction["x"], "y": -direction["y"]}
 
-    unit_wall = {"x": wall_vector["x"] / wall_length, "y": wall_vector["y"] / wall_length}
-    projection = direction["x"] * unit_wall["x"] + direction["y"] * unit_wall["y"]
+    unitWall = {"x": wallVector["x"] / wallLength, "y": wallVector["y"] / wallLength}
+    projection = direction["x"] * unitWall["x"] + direction["y"] * unitWall["y"]
     reflected = {
-        "x": 2 * projection * unit_wall["x"] - direction["x"],
-        "y": 2 * projection * unit_wall["y"] - direction["y"],
+        "x": 2 * projection * unitWall["x"] - direction["x"],
+        "y": 2 * projection * unitWall["y"] - direction["y"],
     }
-    reflected_length = math.hypot(reflected["x"], reflected["y"])
-    if reflected_length == 0:
+    reflectedLength = math.hypot(reflected["x"], reflected["y"])
+    if reflectedLength == 0:
         return {"x": -direction["x"], "y": -direction["y"]}
     return {
-        "x": reflected["x"] / reflected_length,
-        "y": reflected["y"] / reflected_length,
+        "x": reflected["x"] / reflectedLength,
+        "y": reflected["y"] / reflectedLength,
     }
 
 
+# Checks whether a segment crosses any wall segment.
 def _line_clear_of_walls(start: Point, end: Point, wall_lines: list[dict[str, Any]]) -> bool:
     for wall in wall_lines:
-        wall_start = {
+        wallStart = {
             "x": float(wall["start"]["x"]),
             "y": float(wall["start"]["y"]),
         }
-        wall_end = {
+        wallEnd = {
             "x": float(wall["end"]["x"]),
             "y": float(wall["end"]["y"]),
         }
-        if _segments_intersect(start, end, wall_start, wall_end):
+        if _segments_intersect(start, end, wallStart, wallEnd):
             return False
     return True
 
 
+# Checks whether a movement path is clear of blocking balls.
 def _path_clear_of_balls(
     start: Point,
     end: Point,
@@ -229,15 +248,15 @@ def _path_clear_of_balls(
     moving_radius: float,
     configured_radius: float | None = None,
 ) -> bool:
-    moving_clearance = max(float(moving_radius), float(configured_radius or 0.0))
+    movingClearance = max(float(moving_radius), float(configured_radius or 0.0))
     for index, ball in enumerate(balls):
         if index in ignored_indices:
             continue
 
         center = _point(ball)
-        obstacle_radius = max(float(ball["radius"]), float(configured_radius or 0.0))
+        obstacleRadius = max(float(ball["radius"]), float(configured_radius or 0.0))
         clearance = (
-            (moving_clearance + obstacle_radius) * BALL_CLEARANCE_SCALE
+            (movingClearance + obstacleRadius) * BALL_CLEARANCE_SCALE
             + BALL_CLEARANCE_PADDING_PIXELS
         )
         if _point_segment_distance(center, start, end) <= clearance:
@@ -245,15 +264,17 @@ def _path_clear_of_balls(
     return True
 
 
+# Returns candidate balls for the requested group.
 def _candidate_targets(parse_result: dict[str, Any], group: str) -> list[tuple[int, dict[str, Any]]]:
-    target_type = "stripe" if group == "stripes" else "solid"
+    targetType = "stripe" if group == "stripes" else "solid"
     return [
         (index, ball)
         for index, ball in enumerate(parse_result["balls"])
-        if ball["type"] == target_type
+        if ball["type"] == targetType
     ]
 
 
+# Collects all valid pocket and custom shot targets.
 def _shot_targets(parse_result: dict[str, Any]) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = []
     for hole in parse_result["holes"]:
@@ -262,6 +283,7 @@ def _shot_targets(parse_result: dict[str, Any]) -> list[dict[str, Any]]:
     return targets
 
 
+# Traces valid object-ball paths including bank shots.
 def _trace_object_path(
     start: Point,
     outgoing_angle: float,
@@ -272,62 +294,62 @@ def _trace_object_path(
     configured_radius: float,
     max_bounces: int,
 ) -> list[dict[str, Any]]:
-    valid_paths: list[dict[str, Any]] = []
-    path_start = start
+    validPaths: list[dict[str, Any]] = []
+    pathStart = start
     direction = _direction(outgoing_angle)
-    object_lines: list[dict[str, Point]] = []
+    objectLines: list[dict[str, Point]] = []
 
-    for bounce_count in range(max_bounces + 1):
-        wall_hit = _first_wall_hit(path_start, direction, parse_result["wall_lines"])
-        wall_distance = wall_hit["distance"] if wall_hit else RAY_LENGTH
+    for bounceCount in range(max_bounces + 1):
+        wallHit = _first_wall_hit(pathStart, direction, parse_result["wall_lines"])
+        wallDistance = wallHit["distance"] if wallHit else RAY_LENGTH
 
-        reachable_targets: list[dict[str, Any]] = []
-        for shot_target in _shot_targets(parse_result):
-            shot_target_center = _point(shot_target)
-            target_hit = _target_on_ray(
-                path_start, direction, shot_target_center, wall_distance
+        reachableTargets: list[dict[str, Any]] = []
+        for shotTarget in _shot_targets(parse_result):
+            shotTargetCenter = _point(shotTarget)
+            targetHit = _target_on_ray(
+                pathStart, direction, shotTargetCenter, wallDistance
             )
-            if target_hit is None:
+            if targetHit is None:
                 continue
-            target_distance, miss_distance = target_hit
-            if miss_distance > max(moving_radius, 1.0):
+            targetDistance, missDistance = targetHit
+            if missDistance > max(moving_radius, 1.0):
                 continue
             if not _path_clear_of_balls(
-                path_start,
-                shot_target_center,
+                pathStart,
+                shotTargetCenter,
                 balls,
                 ignored_indices={target_index},
                 moving_radius=moving_radius,
                 configured_radius=configured_radius,
             ):
                 continue
-            reachable_targets.append(
+            reachableTargets.append(
                 {
-                    "distance": target_distance,
-                    "target": shot_target,
-                    "target_center": shot_target_center,
+                    "distance": targetDistance,
+                    "target": shotTarget,
+                    "target_center": shotTargetCenter,
                 }
             )
 
-        if reachable_targets:
-            best_target = min(reachable_targets, key=lambda item: item["distance"])
-            valid_paths.append(
+        if reachableTargets:
+            bestTarget = min(reachableTargets, key=lambda item: item["distance"])
+            validPaths.append(
                 {
-                    "target": best_target["target"],
-                    "target_center": best_target["target_center"],
-                    "object_lines": object_lines
-                    + [{"start": path_start, "end": best_target["target_center"]}],
-                    "bounces": bounce_count,
+                    "target": bestTarget["target"],
+                    "target_center": bestTarget["target_center"],
+                    "object_lines": objectLines
+                    + [{"start": pathStart, "end": bestTarget["target_center"]}],
+                    "bounces": bounceCount,
                 }
             )
 
-        if bounce_count >= max_bounces or wall_hit is None:
+        if bounceCount >= max_bounces or wallHit is None:
             break
 
-        wall_point = wall_hit["point"]
+        wallPoint = wallHit["point"]
         if not _path_clear_of_balls(
-            path_start,
-            wall_point,
+            pathStart,
+            wallPoint,
             balls,
             ignored_indices={target_index},
             moving_radius=moving_radius,
@@ -335,89 +357,91 @@ def _trace_object_path(
         ):
             break
 
-        object_lines.append({"start": path_start, "end": wall_point})
-        direction = _reflect_direction(direction, wall_hit["wall"])
-        path_start = _add_scaled(wall_point, direction, max(1.0, moving_radius * 0.25))
+        objectLines.append({"start": pathStart, "end": wallPoint})
+        direction = _reflect_direction(direction, wallHit["wall"])
+        pathStart = _add_scaled(wallPoint, direction, max(1.0, moving_radius * 0.25))
 
-    return valid_paths
+    return validPaths
 
 
+# Finds all valid cue-ball shots for the requested group.
 def find_valid_shots(
     parse_result: dict[str, Any],
     group: str,
     max_bounces: int = MAX_BOUNCES,
 ) -> list[Shot]:
     balls = parse_result["balls"]
-    cue_candidates = [
+    cueCandidates = [
         (index, ball) for index, ball in enumerate(balls) if ball["type"] == "cue"
     ]
-    if not cue_candidates:
+    if not cueCandidates:
         raise ValueError("Could not solve shot because no cue ball was detected.")
 
-    cue_index, cue_ball = cue_candidates[0]
-    cue_center = _point(cue_ball)
-    configured_radius = float(parse_result.get("ball_radius", cue_ball["radius"]))
-    half_sweep = ANGLE_SWEEP_DEGREES / 2
-    angle_samples = int(ANGLE_SWEEP_DEGREES / ANGLE_STEP_DEGREES) + 1
-    valid_shots: list[Shot] = []
+    cueIndex, cueBall = cueCandidates[0]
+    cueCenter = _point(cueBall)
+    configuredRadius = float(parse_result.get("ball_radius", cueBall["radius"]))
+    halfSweep = ANGLE_SWEEP_DEGREES / 2
+    angleSamples = int(ANGLE_SWEEP_DEGREES / ANGLE_STEP_DEGREES) + 1
+    validShots: list[Shot] = []
 
-    for target_index, target_ball in _candidate_targets(parse_result, group):
-        target_center = _point(target_ball)
-        base_angle = _angle(cue_center, target_center)
+    for targetIndex, targetBall in _candidate_targets(parse_result, group):
+        targetCenter = _point(targetBall)
+        baseAngle = _angle(cueCenter, targetCenter)
 
-        for sample_index in range(angle_samples):
-            delta = -half_sweep + sample_index * ANGLE_STEP_DEGREES
-            outgoing_angle = base_angle + delta
+        for sampleIndex in range(angleSamples):
+            delta = -halfSweep + sampleIndex * ANGLE_STEP_DEGREES
+            outgoingAngle = baseAngle + delta
 
-            first_line_clear = _path_clear_of_balls(
-                cue_center,
-                target_center,
+            firstLineClear = _path_clear_of_balls(
+                cueCenter,
+                targetCenter,
                 balls,
-                ignored_indices={cue_index, target_index},
-                moving_radius=float(cue_ball["radius"]),
-                configured_radius=configured_radius,
+                ignored_indices={cueIndex, targetIndex},
+                moving_radius=float(cueBall["radius"]),
+                configured_radius=configuredRadius,
             ) and _line_clear_of_walls(
-                cue_center, target_center, parse_result["wall_lines"]
+                cueCenter, targetCenter, parse_result["wall_lines"]
             )
-            if not first_line_clear:
+            if not firstLineClear:
                 continue
 
-            object_paths = _trace_object_path(
-                target_center,
-                outgoing_angle,
+            objectPaths = _trace_object_path(
+                targetCenter,
+                outgoingAngle,
                 parse_result,
                 balls,
-                target_index,
-                float(target_ball["radius"]),
-                configured_radius,
+                targetIndex,
+                float(targetBall["radius"]),
+                configuredRadius,
                 max_bounces,
             )
-            for object_path in object_paths:
-                valid_shots.append(
+            for objectPath in objectPaths:
+                validShots.append(
                     {
                         "group": group,
-                        "target_ball": target_ball,
-                        "target": object_path["target"],
-                        "target_hole": object_path["target"]
-                        if object_path["target"]["kind"] == "hole"
+                        "target_ball": targetBall,
+                        "target": objectPath["target"],
+                        "target_hole": objectPath["target"]
+                        if objectPath["target"]["kind"] == "hole"
                         else None,
                         "angle_delta": delta,
-                        "bounces": object_path["bounces"],
+                        "bounces": objectPath["bounces"],
                         "cue_line": {
-                            "start": cue_center,
-                            "end": target_center,
+                            "start": cueCenter,
+                            "end": targetCenter,
                         },
-                        "object_lines": object_path["object_lines"],
+                        "object_lines": objectPath["object_lines"],
                         "object_line": {
-                            "start": target_center,
-                            "end": object_path["target_center"],
+                            "start": targetCenter,
+                            "end": objectPath["target_center"],
                         },
                     }
                 )
 
-    return valid_shots
+    return validShots
 
 
+# Picks one valid shot using the configured bounce preference.
 def pick_valid_shot(
     valid_shots: list[Shot],
     pick_smallest_bounces: bool = PICK_SMALLEST_BOUNCES,
@@ -425,19 +449,20 @@ def pick_valid_shot(
     if not valid_shots:
         return None
     if pick_smallest_bounces:
-        min_bounces = min(shot.get("bounces", 0) for shot in valid_shots)
-        tied_shots = [
-            shot for shot in valid_shots if shot.get("bounces", 0) == min_bounces
+        minBounces = min(shot.get("bounces", 0) for shot in valid_shots)
+        tiedShots = [
+            shot for shot in valid_shots if shot.get("bounces", 0) == minBounces
         ]
-        return random.choice(tied_shots)
+        return random.choice(tiedShots)
 
-    max_bounces = max(shot.get("bounces", 0) for shot in valid_shots)
-    tied_shots = [
-        shot for shot in valid_shots if shot.get("bounces", 0) == max_bounces
+    maxBounces = max(shot.get("bounces", 0) for shot in valid_shots)
+    tiedShots = [
+        shot for shot in valid_shots if shot.get("bounces", 0) == maxBounces
     ]
-    return random.choice(tied_shots)
+    return random.choice(tiedShots)
 
 
+# Preserves the legacy camelCase shot-picker entry point.
 def pickValidShot(
     valid_shots: list[Shot],
     pick_smallest_bounces: bool = PICK_SMALLEST_BOUNCES,
@@ -445,6 +470,7 @@ def pickValidShot(
     return pick_valid_shot(valid_shots, pick_smallest_bounces)
 
 
+# Draws the chosen shot path on top of the input image.
 def draw_shot(
     image_path: str | Path,
     shot: Shot | None,
@@ -459,31 +485,31 @@ def draw_shot(
         image.save(output_path)
         return
 
-    cue_start = shot["cue_line"]["start"]
-    cue_end = shot["cue_line"]["end"]
-    object_lines = shot.get("object_lines")
-    if object_lines is None:
-        object_lines = [shot["object_line"]]
+    cueStart = shot["cue_line"]["start"]
+    cueEnd = shot["cue_line"]["end"]
+    objectLines = shot.get("object_lines")
+    if objectLines is None:
+        objectLines = [shot["object_line"]]
 
     draw.line(
-        [(cue_start["x"], cue_start["y"]), (cue_end["x"], cue_end["y"])],
+        [(cueStart["x"], cueStart["y"]), (cueEnd["x"], cueEnd["y"])],
         fill=(255, 235, 59),
         width=4,
     )
-    for index, object_line in enumerate(object_lines):
-        object_start = object_line["start"]
-        object_end = object_line["end"]
-        color = (255, 64, 129) if index == len(object_lines) - 1 else (255, 128, 0)
+    for index, objectLine in enumerate(objectLines):
+        objectStart = objectLine["start"]
+        objectEnd = objectLine["end"]
+        color = (255, 64, 129) if index == len(objectLines) - 1 else (255, 128, 0)
         draw.line(
-            [(object_start["x"], object_start["y"]), (object_end["x"], object_end["y"])],
+            [(objectStart["x"], objectStart["y"]), (objectEnd["x"], objectEnd["y"])],
             fill=color,
             width=4,
         )
 
     for point, color in (
-        (cue_start, (255, 255, 255)),
-        (cue_end, (255, 235, 59)),
-        (object_lines[-1]["end"], (255, 64, 129)),
+        (cueStart, (255, 255, 255)),
+        (cueEnd, (255, 235, 59)),
+        (objectLines[-1]["end"], (255, 64, 129)),
     ):
         x = point["x"]
         y = point["y"]

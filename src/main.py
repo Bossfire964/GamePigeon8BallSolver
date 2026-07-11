@@ -15,6 +15,7 @@ from src.find_shot import (
 from src.parse_screen import TARGETS_XML, parse_screen
 
 
+# Runs the full crop, parse, solve, and draw pipeline.
 def run_pipeline(
     image: str | Path,
     group: str,
@@ -26,47 +27,48 @@ def run_pipeline(
     max_bounces: int | None = None,
     pick_smallest_bounces: bool | None = None,
 ) -> dict:
-    screen_result = crop_screen(image, crop_output, colors)
-    parsed_image = screen_result["image"]
+    screenResult = crop_screen(image, crop_output, colors)
+    parsedImage = screenResult["image"]
 
-    parse_result = parse_screen(parsed_image, targets_path=targets)
-    effective_max_bounces = MAX_BOUNCES if max_bounces is None else max_bounces
-    effective_pick_smallest_bounces = (
+    parseResult = parse_screen(parsedImage, targets_path=targets)
+    effectiveMaxBounces = MAX_BOUNCES if max_bounces is None else max_bounces
+    effectivePickSmallestBounces = (
         PICK_SMALLEST_BOUNCES
         if pick_smallest_bounces is None
         else pick_smallest_bounces
     )
-    shot_kwargs = {"max_bounces": effective_max_bounces}
-    valid_shots = find_valid_shots(parse_result, group, **shot_kwargs)
+    shotKwargs = {"max_bounces": effectiveMaxBounces}
+    validShots = find_valid_shots(parseResult, group, **shotKwargs)
 
-    pick_kwargs = {"pick_smallest_bounces": effective_pick_smallest_bounces}
-    selected_shot = pick_valid_shot(valid_shots, **pick_kwargs)
+    pickKwargs = {"pick_smallest_bounces": effectivePickSmallestBounces}
+    selectedShot = pick_valid_shot(validShots, **pickKwargs)
 
-    output_path = Path(output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    draw_shot(parsed_image, selected_shot, output_path, len(valid_shots))
+    outputPath = Path(output)
+    outputPath.parent.mkdir(parents=True, exist_ok=True)
+    draw_shot(parsedImage, selectedShot, outputPath, len(validShots))
 
     result = {
         "image": str(image),
-        "screen_crop": screen_result,
-        "parsed_image": parsed_image,
-        "output": str(output_path),
+        "screen_crop": screenResult,
+        "parsed_image": parsedImage,
+        "output": str(outputPath),
         "group": group,
-        "max_bounces": effective_max_bounces,
-        "pick_smallest_bounces": effective_pick_smallest_bounces,
-        "valid_shot_count": len(valid_shots),
-        "selected_shot": selected_shot,
-        "parse_result": parse_result,
+        "max_bounces": effectiveMaxBounces,
+        "pick_smallest_bounces": effectivePickSmallestBounces,
+        "valid_shot_count": len(validShots),
+        "selected_shot": selectedShot,
+        "parse_result": parseResult,
     }
 
     if json_output:
-        json_path = Path(json_output)
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        jsonPath = Path(json_output)
+        jsonPath.parent.mkdir(parents=True, exist_ok=True)
+        jsonPath.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
     return result
 
 
+# Parses CLI arguments and prints the solved shot result.
 def main() -> None:
     parser = argparse.ArgumentParser(description="Find and draw a GamePigeon 8 Ball shot.")
     parser.add_argument(

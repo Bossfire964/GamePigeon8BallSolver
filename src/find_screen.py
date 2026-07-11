@@ -14,11 +14,13 @@ from PIL import Image
 COLORS_XML = Path(__file__).resolve().parent.parent / "colors.xml"
 
 
+# Parses an XML rgb attribute into integer channels.
 def _parse_rgb(value: str) -> tuple[int, int, int]:
     r, g, b = value.split(",", maxsplit=2)
     return int(r), int(g), int(b)
 
 
+# Loads the color detection config from XML.
 def _load_colors(colors_path: str | Path) -> dict[str, dict[str, Any]]:
     root = ElementTree.parse(colors_path).getroot()
     colors: dict[str, dict[str, Any]] = {}
@@ -32,6 +34,7 @@ def _load_colors(colors_path: str | Path) -> dict[str, dict[str, Any]]:
     return colors
 
 
+# Finds connected component bounding boxes in a mask.
 def _component_boxes(mask: np.ndarray, min_area: int) -> list[dict[str, Any]]:
     height, width = mask.shape
     seen = np.zeros_like(mask, dtype=bool)
@@ -83,6 +86,7 @@ def _component_boxes(mask: np.ndarray, min_area: int) -> list[dict[str, Any]]:
     return components
 
 
+# Builds a bounding box covering all selected components.
 def _union_bbox(components: list[dict[str, Any]]) -> dict[str, int]:
     return {
         "x1": min(component["bbox"]["x1"] for component in components),
@@ -92,49 +96,53 @@ def _union_bbox(components: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+# Returns the inclusive width of a bounding box.
 def _bbox_width(bbox: dict[str, int]) -> int:
     return bbox["x2"] - bbox["x1"] + 1
 
 
+# Returns the inclusive height of a bounding box.
 def _bbox_height(bbox: dict[str, int]) -> int:
     return bbox["y2"] - bbox["y1"] + 1
 
 
+# Builds a mask for the gray table background.
 def _gray_mask(rgb: np.ndarray, config: dict[str, Any]) -> np.ndarray:
     r = rgb[:, :, 0].astype(np.int16)
     g = rgb[:, :, 1].astype(np.int16)
     b = rgb[:, :, 2].astype(np.int16)
-    base_r, base_g, base_b = config["rgb"]
+    baseR, baseG, baseB = config["rgb"]
     tolerance = config["tolerance"]
-    neutral_tolerance = config["neutral_tolerance"]
+    neutralTolerance = config["neutral_tolerance"]
 
-    near_base = (
-        (np.abs(r - base_r) <= tolerance)
-        & (np.abs(g - base_g) <= tolerance)
-        & (np.abs(b - base_b) <= tolerance)
+    nearBase = (
+        (np.abs(r - baseR) <= tolerance)
+        & (np.abs(g - baseG) <= tolerance)
+        & (np.abs(b - baseB) <= tolerance)
     )
     neutral = (
-        (np.abs(r - g) <= neutral_tolerance)
-        & (np.abs(g - b) <= neutral_tolerance)
+        (np.abs(r - g) <= neutralTolerance)
+        & (np.abs(g - b) <= neutralTolerance)
         & (r >= config["min"])
         & (r <= config["max"])
     )
-    return near_base & neutral
+    return nearBase & neutral
 
 
+# Builds a mask for the brown table rails.
 def _brown_mask(rgb: np.ndarray, config: dict[str, Any]) -> np.ndarray:
     r = rgb[:, :, 0].astype(np.int16)
     g = rgb[:, :, 1].astype(np.int16)
     b = rgb[:, :, 2].astype(np.int16)
-    base_r, base_g, base_b = config["rgb"]
+    baseR, baseG, baseB = config["rgb"]
     tolerance = config["tolerance"]
 
-    near_base = (
-        (np.abs(r - base_r) <= tolerance)
-        & (np.abs(g - base_g) <= tolerance)
-        & (np.abs(b - base_b) <= tolerance)
+    nearBase = (
+        (np.abs(r - baseR) <= tolerance)
+        & (np.abs(g - baseG) <= tolerance)
+        & (np.abs(b - baseB) <= tolerance)
     )
-    brown_shape = (
+    brownShape = (
         (r >= config["red_min"])
         & (r <= config["red_max"])
         & (g >= config["green_min"])
@@ -144,31 +152,34 @@ def _brown_mask(rgb: np.ndarray, config: dict[str, Any]) -> np.ndarray:
         & (r > g + config["red_over_green"])
         & (np.abs(g - b) <= config["green_blue_tolerance"])
     )
-    return near_base & brown_shape
+    return nearBase & brownShape
 
 
+# Measures horizontal overlap between two bounding boxes.
 def _overlap_ratio(a: dict[str, int], b: dict[str, int]) -> float:
     overlap = max(0, min(a["x2"], b["x2"]) - max(a["x1"], b["x1"]) + 1)
     return overlap / max(1, min(_bbox_width(a), _bbox_width(b)))
 
 
+# Finds the broad gray background region around the table.
 def _find_gray_crop(rgb: np.ndarray, config: dict[str, Any]) -> dict[str, int] | None:
     height, width, _ = rgb.shape
-    min_area = max(500, int(height * width * 0.002))
-    components = _component_boxes(_gray_mask(rgb, config), min_area=min_area)
+    minArea = max(500, int(height * width * 0.002))
+    components = _component_boxes(_gray_mask(rgb, config), min_area=minArea)
     if not components:
         return None
 
     largest = max(components, key=lambda component: component["area"])
-    largest_bbox = largest["bbox"]
+    largestBbox = largest["bbox"]
     selected = [
         component
         for component in components
-        if _overlap_ratio(component["bbox"], largest_bbox) >= 0.65
+        if _overlap_ratio(component["bbox"], largestBbox) >= 0.65
     ]
     return _union_bbox(selected)
 
 
+# Finds the table crop by locating brown rails inside the gray region.
 def _find_brown_table_crop(
     rgb: np.ndarray, gray_bbox: dict[str, int], config: dict[str, Any]
 ) -> dict[str, int] | None:
@@ -177,20 +188,21 @@ def _find_brown_table_crop(
         gray_bbox["x1"] : gray_bbox["x2"] + 1,
     ]
     height, width, _ = crop.shape
-    min_area = max(100, int(height * width * 0.004))
-    components = _component_boxes(_brown_mask(crop, config), min_area=min_area)
+    minArea = max(100, int(height * width * 0.004))
+    components = _component_boxes(_brown_mask(crop, config), min_area=minArea)
     if len(components) < 4:
         return None
 
-    rail_bbox = _union_bbox(components)
+    railBbox = _union_bbox(components)
     return {
-        "x1": gray_bbox["x1"] + rail_bbox["x1"],
-        "y1": gray_bbox["y1"] + rail_bbox["y1"],
-        "x2": gray_bbox["x1"] + rail_bbox["x2"],
-        "y2": gray_bbox["y1"] + rail_bbox["y2"],
+        "x1": gray_bbox["x1"] + railBbox["x1"],
+        "y1": gray_bbox["y1"] + railBbox["y1"],
+        "x2": gray_bbox["x1"] + railBbox["x2"],
+        "y2": gray_bbox["y1"] + railBbox["y2"],
     }
 
 
+# Crops a full screenshot down to the detected table area.
 def crop_screen(
     image_path: str | Path,
     output_path: str | Path | None = None,
@@ -201,8 +213,8 @@ def crop_screen(
     rgb = np.array(image)
     colors = _load_colors(colors_path)
 
-    gray_bbox = _find_gray_crop(rgb, colors["table_background_gray"])
-    if gray_bbox is None:
+    grayBbox = _find_gray_crop(rgb, colors["table_background_gray"])
+    if grayBbox is None:
         return {
             "source": str(image_path),
             "image": str(image_path),
@@ -210,36 +222,37 @@ def crop_screen(
             "reason": "gray background not found",
         }
 
-    table_bbox = _find_brown_table_crop(rgb, gray_bbox, colors["table_rail_brown"])
-    if table_bbox is None:
+    tableBbox = _find_brown_table_crop(rgb, grayBbox, colors["table_rail_brown"])
+    if tableBbox is None:
         return {
             "source": str(image_path),
             "image": str(image_path),
             "cropped": False,
-            "gray_bbox": gray_bbox,
+            "gray_bbox": grayBbox,
             "reason": "brown table rails not found",
         }
 
     if output_path is None:
         output_path = image_path
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    outputPath = Path(output_path)
+    outputPath.parent.mkdir(parents=True, exist_ok=True)
 
-    cropped_image = image.crop(
-        (table_bbox["x1"], table_bbox["y1"], table_bbox["x2"] + 1, table_bbox["y2"] + 1)
+    croppedImage = image.crop(
+        (tableBbox["x1"], tableBbox["y1"], tableBbox["x2"] + 1, tableBbox["y2"] + 1)
     )
-    cropped_image.save(output_path)
+    croppedImage.save(outputPath)
 
     return {
         "source": str(image_path),
-        "image": str(output_path),
+        "image": str(outputPath),
         "cropped": True,
-        "gray_bbox": gray_bbox,
-        "table_bbox": table_bbox,
-        "size": {"width": cropped_image.width, "height": cropped_image.height},
+        "gray_bbox": grayBbox,
+        "table_bbox": tableBbox,
+        "size": {"width": croppedImage.width, "height": croppedImage.height},
     }
 
 
+# Parses CLI arguments and prints the crop result.
 def main() -> None:
     parser = argparse.ArgumentParser(description="Crop a full screenshot down to the pool table.")
     parser.add_argument("image", help="Input screenshot path.")
