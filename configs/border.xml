@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <border origin="top_left_hole_center">
-  <line label="top" start="21.63757273482959,6.4729842061512903" end="358.6375727348296,6.4729842061512903" />
-  <line label="right_upper" start="375.6375727348296,21.52701579384871" end="375.6375727348296,354.5270157938487" />
-  <line label="right_lower" start="375.6375727348296,390.5270157938487" end="375.6375727348296,722.5270157938487" />
-  <line label="bottom" start="30.63757273482959,738.5270157938487" end="350.6375727348296,738.5270157938487" />
-  <line label="left_lower" start="6.362427265170411,389.5270157938487" end="6.362427265170411,722.5270157938487" />
-  <line label="left_upper" start="6.362427265170411,21.52701579384871" end="6.362427265170411,354.5270157938487" />
+  <line label="top_left_upper" start="0.0,-25.0" end="35.0,10.5" />
+  <line label="top" start="35.0,10.5" end="347.0,10.5" />
+  <line label="top_right_upper" start="347.0,10.5" end="381.0,-24.5" />
+  <line label="top_left_lower" start="-25.0,0.0" end="11.0,35.5" />
+  <line label="left_upper" start="11.0,35.5" end="11.0,350.0" />
+  <line label="left_middle_upper" start="11.0,350.0" end="-4.0,357.0" />
+  <line label="left_middle_lower" start="-4.0,387.0" end="11.0,396.5" />
+  <line label="left_lower" start="11.0,396.5" end="11.0,708.5" />
+  <line label="bottom_left_lower" start="11.0,708.5" end="-25.0,741.0" />
+  <line label="bottom_left_upper" start="0.0,766.0" end="36.5,733.0" />
+  <line label="bottom" start="36.5,733.0" end="348.0,733.0" />
+  <line label="bottom_right_upper" start="348.0,733.0" end="381.0,765.5" />
+  <line label="bottom_right_lower" start="406.0,740.5" end="370.0,708.5" />
+  <line label="right_lower" start="370.0,708.5" end="370.0,396.5" />
+  <line label="right_middle_lower" start="370.0,396.5" end="384.0,387.0" />
+  <line label="right_middle_upper" start="384.0,357.0" end="370.0,350.0" />
+  <line label="right_upper" start="370.0,350.0" end="370.0,35.5" />
+  <line label="top_right_lower" start="406.0,0.5" end="370.0,35.5" />
 </border>

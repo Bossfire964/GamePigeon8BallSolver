@@ -4,15 +4,15 @@ import argparse
 import json
 from pathlib import Path
 
-from src.find_screen import COLORS_XML, crop_screen
-from src.find_shot import (
+from find_screen import COLORS_XML, crop_screen
+from find_shot import (
     MAX_BOUNCES,
     PICK_SMALLEST_BOUNCES,
     draw_shot,
     find_valid_shots,
     pick_valid_shot,
 )
-from src.parse_screen import TARGETS_XML, parse_screen
+from parse_screen import TARGETS_XML, parse_screen
 
 
 # Runs the full crop, parse, solve, and draw pipeline.
@@ -95,16 +95,6 @@ def main() -> None:
         help="Optional path to save the parse and shot result JSON.",
     )
     parser.add_argument(
-        "--targets",
-        default=TARGETS_XML,
-        help="Optional targets.xml path. Defaults to the project targets.xml.",
-    )
-    parser.add_argument(
-        "--colors",
-        default=COLORS_XML,
-        help="Optional colors.xml path for full-screenshot cropping.",
-    )
-    parser.add_argument(
         "--crop-output",
         default="tmp/screen_crop.png",
         help="Output path for the intermediate table crop.",
@@ -127,8 +117,6 @@ def main() -> None:
         group=args.group,
         output=args.output,
         json_output=args.json_output,
-        targets=args.targets,
-        colors=args.colors,
         crop_output=args.crop_output,
         max_bounces=args.max_bounces,
         pick_smallest_bounces=not args.pick_most_bounces,

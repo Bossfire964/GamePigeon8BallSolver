@@ -14,10 +14,10 @@ from PIL import Image, ImageDraw
 Line = dict[str, Any]
 Point = dict[str, Any]
 Ball = dict[str, Any]
-BORDER_XML = Path(__file__).resolve().parent.parent / "border.xml"
-SCALE_XML = Path(__file__).resolve().parent.parent / "scale.xml"
-BALL_XML = Path(__file__).resolve().parent.parent / "ball.xml"
-TARGETS_XML = Path(__file__).resolve().parent.parent / "targets.xml"
+BORDER_XML = Path(__file__).resolve().parent.parent / "configs" / "border.xml"
+SCALE_XML = Path(__file__).resolve().parent.parent / "configs" / "scale.xml"
+BALL_XML = Path(__file__).resolve().parent.parent / "configs" / "ball.xml"
+TARGETS_XML = Path(__file__).resolve().parent.parent / "configs" / "targets.xml"
 
 
 # Finds connected component bounding boxes in a mask.
@@ -196,8 +196,6 @@ def _load_wall_lines(
             }
         )
 
-    if len(lines) != 6:
-        raise ValueError(f"Expected 6 border lines in {border_path}, found {len(lines)}.")
     return lines
 
 
@@ -304,19 +302,49 @@ def _circle_ratio(mask: np.ndarray, radius: int) -> np.ndarray:
     return ratios / len(offsets)
 
 
+# Finds a wall line by label.
+def _line_by_label(lines: list[Line], label: str) -> Line | None:
+    for line in lines:
+        if line["label"] == label:
+            return line
+    return None
+
+
 # Limits ball search to the table interior away from pockets.
 def _inside_search_mask(
     shape: tuple[int, int],
     bounds: dict[str, int],
+    lines: list[Line],
     holes: list[Point],
     radius: int,
 ) -> np.ndarray:
     height, width = shape
     mask = np.zeros((height, width), dtype=bool)
-    top = max(radius, bounds["top"] + radius)
-    bottom = min(height - radius, bounds["bottom"] - radius)
-    left = max(radius, bounds["left"] + radius)
-    right = min(width - radius, bounds["right"] - radius)
+    topLine = _line_by_label(lines, "top")
+    bottomLine = _line_by_label(lines, "bottom")
+    leftLine = _line_by_label(lines, "left_upper") or _line_by_label(lines, "left_lower")
+    rightLine = _line_by_label(lines, "right_upper") or _line_by_label(lines, "right_lower")
+
+    topEdge = bounds["top"]
+    if topLine is not None:
+        topEdge = max(topLine["start"]["y"], topLine["end"]["y"])
+
+    bottomEdge = bounds["bottom"]
+    if bottomLine is not None:
+        bottomEdge = min(bottomLine["start"]["y"], bottomLine["end"]["y"])
+
+    leftEdge = bounds["left"]
+    if leftLine is not None:
+        leftEdge = max(leftLine["start"]["x"], leftLine["end"]["x"])
+
+    rightEdge = bounds["right"]
+    if rightLine is not None:
+        rightEdge = min(rightLine["start"]["x"], rightLine["end"]["x"])
+
+    top = max(radius, topEdge + radius)
+    bottom = min(height - radius, bottomEdge - radius)
+    left = max(radius, leftEdge + radius)
+    right = min(width - radius, rightEdge - radius)
     mask[top : bottom + 1, left : right + 1] = True
 
     yIndices, xIndices = np.ogrid[:height, :width]
@@ -378,12 +406,13 @@ def _classify_ball(
 def _find_balls(
     rgb: np.ndarray,
     bounds: dict[str, int],
+    lines: list[Line],
     holes: list[Point],
     radius: int,
 ) -> list[Ball]:
     felt = _table_felt_mask(rgb)
     fillRatio = _circle_ratio(~felt, radius)
-    searchArea = _inside_search_mask(felt.shape, bounds, holes, radius)
+    searchArea = _inside_search_mask(felt.shape, bounds, lines, holes, radius)
     candidates = (fillRatio >= 0.68) & searchArea
 
     components = _component_boxes(candidates, min_area=3)
@@ -493,7 +522,7 @@ def parse_screen(
     lines = _load_wall_lines(border_path, holes, scale)
     bounds = _table_bounds_from_lines(lines)
     ballRadius = _load_ball_radius(ball_path, scale)
-    balls = _find_balls(rgb, bounds, holes, ballRadius)
+    balls = _find_balls(rgb, bounds, lines, holes, ballRadius)
     shotTargets = _load_shot_targets(targets_path, holes, scale)
 
     result = {

@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 
-COLORS_XML = Path(__file__).resolve().parent.parent / "colors.xml"
+COLORS_XML = Path(__file__).resolve().parent.parent / "configs" / "colors.xml"
 
 
 # Parses an XML rgb attribute into integer channels.
