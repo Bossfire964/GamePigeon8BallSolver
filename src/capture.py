@@ -3,15 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 import time
 from pathlib import Path
 
+from display_shot import displayShot
 from main import run_pipeline
 
 
 # Captures a screenshot to the requested output path.
-def _capture_screen(output_path: str | Path) -> None:
+def captureScreen(output_path: str | Path) -> None:
     outputPath = Path(output_path)
     outputPath.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -30,7 +30,7 @@ def _capture_screen(output_path: str | Path) -> None:
 
 
 # Captures the screen, solves the shot, and optionally shows the overlay.
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(
         description="Capture the screen, solve the shot, and optionally display an overlay."
     )
@@ -90,9 +90,10 @@ def main() -> None:
         print(f"Capturing screen in {remaining}...")
         time.sleep(1)
 
-    _capture_screen(args.screenshot)
+    captureScreen(args.screenshot)
     print(f"Captured screenshot: {args.screenshot}")
 
+    # returns the json of the shot
     result = run_pipeline(
         image=args.screenshot,
         group=args.group,
@@ -101,20 +102,12 @@ def main() -> None:
         crop_output=args.crop_output,
         max_bounces=args.max_bounces,
         pick_smallest_bounces=not args.pick_most_bounces,
+        drawShotImage=False,
     )
     print(json.dumps(result, indent=2))
 
     if not args.no_display:
-        subprocess.run(
-            [
-                sys.executable,
-                "display_shot.py",
-                args.json_output,
-                "--line-width",
-                str(args.line_width),
-            ],
-            check=False,
-        )
+        displayShot(args.json_output, line_width=args.line_width)
 
 
 if __name__ == "__main__":

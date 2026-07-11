@@ -26,6 +26,7 @@ def run_pipeline(
     crop_output: str | Path = "tmp/screen_crop.png",
     max_bounces: int | None = None,
     pick_smallest_bounces: bool | None = None,
+    drawShotImage: bool = False,
 ) -> dict:
     screenResult = crop_screen(image, crop_output, colors)
     parsedImage = screenResult["image"]
@@ -44,8 +45,9 @@ def run_pipeline(
     selectedShot = pick_valid_shot(validShots, **pickKwargs)
 
     outputPath = Path(output)
-    outputPath.parent.mkdir(parents=True, exist_ok=True)
-    draw_shot(parsedImage, selectedShot, outputPath, len(validShots))
+    if drawShotImage:
+        outputPath.parent.mkdir(parents=True, exist_ok=True)
+        draw_shot(parsedImage, selectedShot, outputPath, len(validShots))
 
     result = {
         "image": str(image),
@@ -130,6 +132,7 @@ def main() -> None:
         crop_output=args.crop_output,
         max_bounces=args.max_bounces,
         pick_smallest_bounces=not args.pick_most_bounces,
+        drawShotImage=True,
     )
     print(json.dumps(result, indent=2))
 
