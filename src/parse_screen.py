@@ -1,3 +1,5 @@
+# AI Generatted for now
+
 from __future__ import annotations
 
 import argparse
@@ -9,11 +11,23 @@ from xml.etree import ElementTree
 
 import numpy as np
 from PIL import Image, ImageDraw
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from templates.parse_template import (
+    Ball,
+    Bbox,
+    Bounds,
+    Hole,
+    Line,
+    Point,
+    Scale,
+    ScreenResult,
+    Target,
+)
 
 
-Line = dict[str, Any]
-Point = dict[str, Any]
-Ball = dict[str, Any]
 BORDER_XML = Path(__file__).resolve().parent.parent / "configs" / "border.xml"
 SCALE_XML = Path(__file__).resolve().parent.parent / "configs" / "scale.xml"
 BALL_XML = Path(__file__).resolve().parent.parent / "configs" / "ball.xml"
@@ -21,10 +35,10 @@ TARGETS_XML = Path(__file__).resolve().parent.parent / "configs" / "targets.xml"
 
 
 # Finds connected component bounding boxes in a mask.
-def _component_boxes(mask: np.ndarray, min_area: int) -> list[dict[str, Any]]:
+def _component_boxes(mask: np.ndarray, min_area: int) -> list[Hole]:
     height, width = mask.shape
     seen = np.zeros_like(mask, dtype=bool)
-    components: list[dict[str, Any]] = []
+    components: list[Hole] = []
 
     for y in range(height):
         for x in range(width):
@@ -59,29 +73,22 @@ def _component_boxes(mask: np.ndarray, min_area: int) -> list[dict[str, Any]]:
                 minY = min(ys)
                 maxY = max(ys)
                 components.append(
-                    {
-                        "area": area,
-                        "center": {
-                            "x": float(sum(xs) / area),
-                            "y": float(sum(ys) / area),
-                        },
-                        "bbox": {
-                            "x1": int(minX),
-                            "y1": int(minY),
-                            "x2": int(maxX),
-                            "y2": int(maxY),
-                        },
-                    }
+                    Hole(
+                        label="",
+                        area=area,
+                        center=Point(x=float(sum(xs) / area), y=float(sum(ys) / area)),
+                        bbox=Bbox(x1=int(minX), y1=int(minY), x2=int(maxX), y2=int(maxY)),
+                    )
                 )
 
     return components
 
 
 # Detects and labels the six pockets on the table.
-def _find_holes(rgb: np.ndarray, min_area: int = 500) -> list[Point]:
+def _find_holes(rgb: np.ndarray, min_area: int = 500) -> list[Hole]:
     dark = (rgb[:, :, 0] < 25) & (rgb[:, :, 1] < 25) & (rgb[:, :, 2] < 25)
     components = _component_boxes(dark, min_area=min_area)
-    components = sorted(components, key=lambda component: component["area"], reverse=True)
+    components = sorted(components, key=lambda component: component.area, reverse=True)
 
     holes = components[:6]
     if len(holes) < 6:
@@ -95,15 +102,16 @@ def _find_holes(rgb: np.ndarray, min_area: int = 500) -> list[Point]:
         "bottom_left",
         "bottom_right",
     ]
-    by_label: dict[str, Point] = {}
+    by_label: dict[str, Hole] = {}
 
-    sortedByY = sorted(holes, key=lambda hole: hole["center"]["y"])
-    top = sorted(sortedByY[:2], key=lambda hole: hole["center"]["x"])
-    middle = sorted(sortedByY[2:4], key=lambda hole: hole["center"]["x"])
-    bottom = sorted(sortedByY[4:6], key=lambda hole: hole["center"]["x"])
+    sortedByY = sorted(holes, key=lambda hole: hole.center.y)
+    top = sorted(sortedByY[:2], key=lambda hole: hole.center.x)
+    middle = sorted(sortedByY[2:4], key=lambda hole: hole.center.x)
+    bottom = sorted(sortedByY[4:6], key=lambda hole: hole.center.x)
 
     for label, hole in zip(labels, top + middle + bottom):
-        by_label[label] = {"label": label, **hole}
+        hole.label = label
+        by_label[label] = hole
 
     return [by_label[label] for label in labels]
 
@@ -115,18 +123,18 @@ def _parse_relative_point(value: str) -> tuple[float, float]:
 
 
 # Indexes holes by their label.
-def _holes_by_label(holes: list[Point]) -> dict[str, Point]:
-    return {hole["label"]: hole for hole in holes}
+def _holes_by_label(holes: list[Hole]) -> dict[str, Hole]:
+    return {hole.label: hole for hole in holes}
 
 
 # Returns a hole center as an x,y tuple.
-def _hole_center(hole: Point) -> tuple[float, float]:
-    return float(hole["center"]["x"]), float(hole["center"]["y"])
+def _hole_center(hole: Hole) -> tuple[float, float]:
+    return float(hole.center.x), float(hole.center.y)
 
 
 # Calculates scale from detected holes and the XML reference.
 def _scale_from_reference(
-    scale_path: str | Path, holes: list[Point]
+    scale_path: str | Path, holes: list[Hole]
 ) -> dict[str, float]:
     byLabel = _holes_by_label(holes)
     root = ElementTree.parse(scale_path).getroot()
@@ -165,14 +173,16 @@ def _scale_from_reference(
         raise ValueError("Border reference width and height must be non-zero.")
 
     return {
-        "x": (detectedTopRightX - detectedTopLeftX) / referenceWidth,
-        "y": (detectedBottomLeftY - detectedTopLeftY) / referenceHeight,
+        Scale(
+            x=float((detectedTopRightX - detectedTopLeftX) / referenceWidth),
+            y=float((detectedBottomLeftY - detectedTopLeftY) / referenceHeight)
+        )
     }
 
 
 # Loads the wall line positions from the border XML.
 def _load_wall_lines(
-    border_path: str | Path, holes: list[Point], scale: dict[str, float]
+    border_path: str | Path, holes: list[Hole], scale: dict[str, float]
 ) -> list[Line]:
     byLabel = _holes_by_label(holes)
     originX, originY = _hole_center(byLabel["top_left"])
@@ -183,17 +193,17 @@ def _load_wall_lines(
         startDx, startDy = _parse_relative_point(node.attrib["start"])
         endDx, endDy = _parse_relative_point(node.attrib["end"])
         lines.append(
-            {
-                "label": node.attrib["label"],
-                "start": {
-                    "x": int(round(originX + startDx * scale["x"])),
-                    "y": int(round(originY + startDy * scale["y"])),
-                },
-                "end": {
-                    "x": int(round(originX + endDx * scale["x"])),
-                    "y": int(round(originY + endDy * scale["y"])),
-                },
-            }
+            Line(
+                label=node.attrib["label"],
+                start=Point(
+                    x=int(round(originX + startDx * scale["x"])),
+                    y=int(round(originY + startDy * scale["y"])),
+                ),
+                end=Point(
+                    x=int(round(originX + endDx * scale["x"])),
+                    y=int(round(originY + endDy * scale["y"])),
+                ),
+            )
         )
 
     return lines
@@ -202,20 +212,22 @@ def _load_wall_lines(
 # Calculates the overall table bounds from the wall lines.
 def _table_bounds_from_lines(lines: list[Line]) -> dict[str, int]:
     xs = [
-        point["x"]
+        point.x
         for line in lines
-        for point in (line["start"], line["end"])
+        for point in (line.start, line.end)
     ]
     ys = [
-        point["y"]
+        point.y
         for line in lines
-        for point in (line["start"], line["end"])
+        for point in (line.start, line.end)
     ]
     return {
-        "left": min(xs),
-        "right": max(xs),
-        "top": min(ys),
-        "bottom": max(ys),
+        Bounds(
+            left=min(xs),
+            right=max(xs),
+            top=min(ys),
+            bottom=max(ys)
+        )
     }
 
 
@@ -234,9 +246,9 @@ def _load_ball_radius(ball_path: str | Path, scale: dict[str, float]) -> int:
 # Loads extra shot targets from the XML config.
 def _load_shot_targets(
     targets_path: str | Path,
-    holes: list[Point],
+    holes: list[Hole],
     scale: dict[str, float],
-) -> list[Point]:
+) -> list[Target]:
     targetsPath = Path(targets_path)
     if not targetsPath.exists():
         return []
@@ -245,19 +257,19 @@ def _load_shot_targets(
     originX, originY = _hole_center(byLabel["top_left"])
     root = ElementTree.parse(targetsPath).getroot()
 
-    targets: list[Point] = []
+    targets: list[Target] = []
     for index, node in enumerate(root.findall("target")):
         dx, dy = _parse_relative_point(node.attrib["point"])
         label = node.attrib.get("label", f"target_{index + 1}")
         targets.append(
-            {
-                "label": label,
-                "kind": "target",
-                "center": {
-                    "x": float(originX + dx * scale["x"]),
-                    "y": float(originY + dy * scale["y"]),
-                },
-            }
+            Target(
+                label=label,
+                kind="target",
+                center=Point(
+                    x=float(originX + dx * scale["x"]),
+                    y=float(originY + dy * scale["y"]),
+                ),
+            )
         )
     return targets
 
@@ -305,7 +317,7 @@ def _circle_ratio(mask: np.ndarray, radius: int) -> np.ndarray:
 # Finds a wall line by label.
 def _line_by_label(lines: list[Line], label: str) -> Line | None:
     for line in lines:
-        if line["label"] == label:
+        if line.label == label:
             return line
     return None
 
@@ -315,7 +327,7 @@ def _inside_search_mask(
     shape: tuple[int, int],
     bounds: dict[str, int],
     lines: list[Line],
-    holes: list[Point],
+    holes: list[Hole],
     radius: int,
 ) -> np.ndarray:
     height, width = shape
@@ -327,19 +339,19 @@ def _inside_search_mask(
 
     topEdge = bounds["top"]
     if topLine is not None:
-        topEdge = max(topLine["start"]["y"], topLine["end"]["y"])
+        topEdge = max(topLine.start.y, topLine.end.y)
 
     bottomEdge = bounds["bottom"]
     if bottomLine is not None:
-        bottomEdge = min(bottomLine["start"]["y"], bottomLine["end"]["y"])
+        bottomEdge = min(bottomLine.start.y, bottomLine.end.y)
 
     leftEdge = bounds["left"]
     if leftLine is not None:
-        leftEdge = max(leftLine["start"]["x"], leftLine["end"]["x"])
+        leftEdge = max(leftLine.start.x, leftLine.end.x)
 
     rightEdge = bounds["right"]
     if rightLine is not None:
-        rightEdge = min(rightLine["start"]["x"], rightLine["end"]["x"])
+        rightEdge = min(rightLine.start.x, rightLine.end.x)
 
     top = max(radius, topEdge + radius)
     bottom = min(height - radius, bottomEdge - radius)
@@ -351,8 +363,8 @@ def _inside_search_mask(
     for hole in holes:
         hx, hy = _hole_center(hole)
         pocketRadius = max(
-            hole["bbox"]["x2"] - hole["bbox"]["x1"],
-            hole["bbox"]["y2"] - hole["bbox"]["y1"],
+            hole.bbox.x2 - hole.bbox.x1,
+            hole.bbox.y2 - hole.bbox.y1,
         ) / 2
         blockedRadius = pocketRadius + radius
         mask &= (xIndices - hx) ** 2 + (yIndices - hy) ** 2 > blockedRadius**2
@@ -363,7 +375,7 @@ def _inside_search_mask(
 # Counts significant disconnected white patches inside a ball.
 def _count_white_patches(white_patch: np.ndarray) -> tuple[int, list[int]]:
     components = _component_boxes(white_patch, min_area=1)
-    areas = sorted((component["area"] for component in components), reverse=True)
+    areas = sorted((component.area for component in components), reverse=True)
     significantAreas = [area for area in areas if area >= 5]
     return len(significantAreas), significantAreas
 
@@ -407,7 +419,7 @@ def _find_balls(
     rgb: np.ndarray,
     bounds: dict[str, int],
     lines: list[Line],
-    holes: list[Point],
+    holes: list[Hole],
     radius: int,
 ) -> list[Ball]:
     felt = _table_felt_mask(rgb)
@@ -417,19 +429,22 @@ def _find_balls(
 
     components = _component_boxes(candidates, min_area=3)
     balls: list[Ball] = []
-    for component in sorted(components, key=lambda item: item["center"]["y"]):
-        centerX = int(round(component["center"]["x"]))
-        centerY = int(round(component["center"]["y"]))
+    for component in sorted(components, key=lambda item: item.center.y):
+        centerX = int(round(component.center.x))
+        centerY = int(round(component.center.y))
         ballType, metrics = _classify_ball(rgb, centerX, centerY, radius)
         balls.append(
-            {
-                "type": ballType,
-                "center": {"x": centerX, "y": centerY},
-                "radius": radius,
-                "candidate_area": component["area"],
-                "fill_ratio": float(fillRatio[centerY, centerX]),
-                **metrics,
-            }
+            Ball(
+                type=ballType,
+                center=Point(x=centerX, y=centerY),
+                radius=radius,
+                candidate_area=component.area,
+                fill_ratio=float(fillRatio[centerY, centerX]),
+                white_ratio=float(metrics["white_ratio"]),
+                black_ratio=float(metrics["black_ratio"]),
+                white_patch_count=int(metrics["white_patch_count"]),
+                white_patch_areas=[int(area) for area in metrics["white_patch_areas"]],
+            )
         )
 
     return balls
@@ -439,16 +454,16 @@ def _find_balls(
 def _draw_overlay(
     image: Image.Image,
     lines: list[Line],
-    holes: list[Point],
+    holes: list[Hole],
     balls: list[Ball],
-    shot_targets: list[Point],
+    shot_targets: list[Target],
 ) -> Image.Image:
     overlay = image.convert("RGB").copy()
     draw = ImageDraw.Draw(overlay)
 
     for line in lines:
-        start = (line["start"]["x"], line["start"]["y"])
-        end = (line["end"]["x"], line["end"]["y"])
+        start = (line.start.x, line.start.y)
+        end = (line.end.x, line.end.y)
         draw.line([start, end], fill=(255, 235, 59), width=4)
         draw.ellipse(
             (start[0] - 3, start[1] - 3, start[0] + 3, start[1] + 3),
@@ -460,8 +475,8 @@ def _draw_overlay(
         )
 
     for hole in holes:
-        cx = int(round(hole["center"]["x"]))
-        cy = int(round(hole["center"]["y"]))
+        cx = int(round(hole.center.x))
+        cy = int(round(hole.center.y))
         radius = 12
         draw.ellipse(
             (cx - radius, cy - radius, cx + radius, cy + radius),
@@ -471,8 +486,8 @@ def _draw_overlay(
         draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), fill=(255, 64, 129))
 
     for target in shot_targets:
-        cx = int(round(target["center"]["x"]))
-        cy = int(round(target["center"]["y"]))
+        cx = int(round(target.center.x))
+        cy = int(round(target.center.y))
         draw.ellipse((cx - 7, cy - 7, cx + 7, cy + 7), fill=(244, 67, 54))
         draw.ellipse((cx - 11, cy - 11, cx + 11, cy + 11), outline=(255, 255, 255), width=2)
 
@@ -489,17 +504,17 @@ def _draw_overlay(
         "stripe": (255, 255, 255),
     }
     for ball in balls:
-        cx = ball["center"]["x"]
-        cy = ball["center"]["y"]
-        radius = ball["radius"] + 3
-        color = ballColors[ball["type"]]
+        cx = ball.center.x
+        cy = ball.center.y
+        radius = ball.radius + 3
+        color = ballColors[ball.type]
         draw.ellipse(
             (cx - radius, cy - radius, cx + radius, cy + radius),
             outline=color,
             width=3,
         )
-        label = ball["type"][0].upper()
-        draw.text((cx - 3, cy - 6), label, fill=textColors[ball["type"]])
+        label = ball.type[0].upper()
+        draw.text((cx - 3, cy - 6), label, fill=textColors[ball.type])
 
     return overlay
 
@@ -512,7 +527,7 @@ def parse_screen(
     scale_path: str | Path = SCALE_XML,
     ball_path: str | Path = BALL_XML,
     targets_path: str | Path = TARGETS_XML,
-) -> dict[str, Any]:
+) -> ScreenResult:
     image_path = Path(image_path)
     image = Image.open(image_path).convert("RGB")
     rgb = np.array(image)
@@ -524,27 +539,28 @@ def parse_screen(
     ballRadius = _load_ball_radius(ball_path, scale)
     balls = _find_balls(rgb, bounds, lines, holes, ballRadius)
     shotTargets = _load_shot_targets(targets_path, holes, scale)
-
-    result = {
-        "image": str(image_path),
-        "border": str(border_path),
-        "scale": str(scale_path),
-        "ball_config": str(ball_path),
-        "targets_config": str(targets_path),
-        "border_scale": scale,
-        "ball_radius": ballRadius,
-        "table_bounds": bounds,
-        "wall_lines": lines,
-        "holes": holes,
-        "shot_targets": shotTargets,
-        "balls": balls,
-    }
+    overlayPath: str | None = None
 
     if output_path is not None:
         output = _draw_overlay(image, lines, holes, balls, shotTargets)
         output.save(output_path)
-        result["overlay"] = str(output_path)
+        overlayPath = str(output_path)
 
+    result = ScreenResult(
+        image=str(image_path), #path to cropped image
+        border=str(border_path), # path to border xml
+        scale=str(scale_path), # path to scale xml
+        ball_config=str(ball_path), # path to ball xml
+        targets_config=str(targets_path), # path to targets xml
+        border_scale=scale, # scale factors for x and y
+        ball_radius=ballRadius, # scaled cue-ball radius
+        table_bounds=bounds, # table bounds from wall lines
+        wall_lines=lines, # wall lines from border xml
+        holes=holes, # coordinates of the holes
+        shot_targets=shotTargets, # coordinates of additional targets
+        balls=balls, # coordinates and information of balls
+        overlay=overlayPath, #not used???
+    )
     return result
 
 
@@ -591,7 +607,7 @@ def main() -> None:
         args.balls,
         args.targets,
     )
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result.getAllElements(), indent=2))
 
 
 if __name__ == "__main__":

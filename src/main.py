@@ -10,9 +10,19 @@ from find_shot import (
     PICK_SMALLEST_BOUNCES,
     draw_shot,
     find_valid_shots,
-    pick_valid_shot,
 )
 from parse_screen import TARGETS_XML, parse_screen
+
+
+# Picks a valid shot after skipping earlier options.
+def pick_skipped_shot(valid_shots: list[dict], skip: int = 0) -> dict | None:
+    if not valid_shots:
+        return None
+    if skip < 0:
+        skip = 0
+    if skip >= len(valid_shots):
+        return None
+    return valid_shots[skip]
 
 
 # Runs the full crop, parse, solve, and draw pipeline.
@@ -26,12 +36,14 @@ def run_pipeline(
     crop_output: str | Path = "tmp/screen_crop.png",
     max_bounces: int | None = None,
     pick_smallest_bounces: bool | None = None,
+    skip: int = 0,
     drawShotImage: bool = False,
 ) -> dict:
     screenResult = crop_screen(image, crop_output, colors)
     parsedImage = screenResult["image"]
 
     parseResult = parse_screen(parsedImage, targets_path=targets)
+    parseResultDict = parseResult.getAllElements()
     effectiveMaxBounces = MAX_BOUNCES if max_bounces is None else max_bounces
     effectivePickSmallestBounces = (
         PICK_SMALLEST_BOUNCES
@@ -39,10 +51,13 @@ def run_pipeline(
         else pick_smallest_bounces
     )
     shotKwargs = {"max_bounces": effectiveMaxBounces}
-    validShots = find_valid_shots(parseResult, group, **shotKwargs)
+    validShots = find_valid_shots(parseResultDict, group, **shotKwargs)
+    if effectivePickSmallestBounces:
+        validShots = sorted(validShots, key=lambda shot: shot.get("bounces", 0))
+    else:
+        validShots = sorted(validShots, key=lambda shot: shot.get("bounces", 0), reverse=True)
 
-    pickKwargs = {"pick_smallest_bounces": effectivePickSmallestBounces}
-    selectedShot = pick_valid_shot(validShots, **pickKwargs)
+    selectedShot = pick_skipped_shot(validShots, skip)
 
     outputPath = Path(output)
     if drawShotImage:
@@ -57,9 +72,10 @@ def run_pipeline(
         "group": group,
         "max_bounces": effectiveMaxBounces,
         "pick_smallest_bounces": effectivePickSmallestBounces,
+        "skip": skip,
         "valid_shot_count": len(validShots),
         "selected_shot": selectedShot,
-        "parse_result": parseResult,
+        "parse_result": parseResultDict,
     }
 
     if json_output:

@@ -3,15 +3,18 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from display_shot import displayShot
 from main import run_pipeline
 
 
 # Captures a screenshot to the requested output path.
-def captureScreen(output_path: str | Path) -> None:
+def capture_screen(output_path: str | Path) -> None:
     outputPath = Path(output_path)
     outputPath.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -84,13 +87,19 @@ def main():
         action="store_true",
         help="Pick the first shot with the most bounces instead of the fewest.",
     )
+    parser.add_argument(
+        "--skip",
+        type=int,
+        default=0,
+        help="Skip this many available shots before choosing one.",
+    )
     args = parser.parse_args()
 
     for remaining in range(args.delay, 0, -1):
         print(f"Capturing screen in {remaining}...")
         time.sleep(1)
 
-    captureScreen(args.screenshot)
+    capture_screen(args.screenshot)
     print(f"Captured screenshot: {args.screenshot}")
 
     # returns the json of the shot
@@ -102,6 +111,7 @@ def main():
         crop_output=args.crop_output,
         max_bounces=args.max_bounces,
         pick_smallest_bounces=not args.pick_most_bounces,
+        skip=args.skip,
         drawShotImage=False,
     )
     print(json.dumps(result, indent=2))

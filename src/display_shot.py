@@ -19,16 +19,16 @@ except ImportError:
         )
 
 
-SCALE_XML = Path(__file__).resolve().parent / "configs" / "scale.xml"
+SCALE_XML = Path(__file__).resolve().parent.parent / "configs" / "scale.xml"
 
 
 # Loads the saved shot result JSON file.
-def loadResult(path: str | Path) -> dict:
+def load_result(path: str | Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 # Calculates the overlay window geometry from the shot result.
-def overlayGeometry(result: dict) -> tuple[float, float, float, float]:
+def overlay_geometry(result: dict) -> tuple[float, float, float, float]:
     crop = result.get("screen_crop", {})
     tableBbox = crop.get("table_bbox")
     if tableBbox:
@@ -51,7 +51,7 @@ def overlayGeometry(result: dict) -> tuple[float, float, float, float]:
 
 
 # Reads the screenshot-to-screen scale from the XML config.
-def scaleFromXML(scale_path: str | Path = SCALE_XML) -> float | None:
+def scale_from_xml(scale_path: str | Path = SCALE_XML) -> float | None:
     try:
         return float(
             ElementTree.parse(scale_path)
@@ -78,7 +78,7 @@ class WindowOverlay(QMainWindow):
         self.line_width = max(float(line_width), 0.1)
         self.screen_scale = max(screen_scale, 0.01)
         self.debug = debug
-        x, y, width, height = overlayGeometry(result)
+        x, y, width, height = overlay_geometry(result)
         self.setWindowTitle("8 Ball Shot Overlay")
         self.setGeometry(
             int(round(x / self.screen_scale)),
@@ -100,11 +100,12 @@ class WindowOverlay(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
     # Keeps the overlay window above the game window.
-    def keepOnTop(self) -> None:
+    def keep_on_top(self) -> None:
         self.raise_()
         self.repaint()
 
     # Draws the cue and object-ball path lines.
+    # Defined by WindowOverlay
     def paintEvent(self, event) -> None:  # noqa: N802
         shot = self.result.get("selected_shot")
         painter = QPainter(self)
@@ -154,7 +155,7 @@ class WindowOverlay(QMainWindow):
 
 
 # Opens the click-through overlay window for a saved shot result.
-def displayShot(
+def display_shot(
     json_path: str | Path,
     line_width: float = 1.0,
 ) -> int:
@@ -165,7 +166,7 @@ def displayShot(
         )
 
 
-    result = loadResult(json_path)
+    result = load_result(json_path)
 
     app = QApplication.instance()
     if app is None:
@@ -173,7 +174,7 @@ def displayShot(
     app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, True)
 
     # Set app scale 
-    scale = scaleFromXML(SCALE_XML)
+    scale = scale_from_xml(SCALE_XML)
     if scale is None:
         screen = app.primaryScreen()
         scale = float(screen.devicePixelRatio()) if screen is not None else 1.0
@@ -186,11 +187,11 @@ def displayShot(
         click_through=True,
     )
     overlay.show()
-    overlay.keepOnTop()
+    overlay.keep_on_top()
 
     # attempt to alwwyas keep on top
     keepOnTopTimer = QTimer()
-    keepOnTopTimer.timeout.connect(overlay.keepOnTop)
+    keepOnTopTimer.timeout.connect(overlay.keep_on_top)
     keepOnTopTimer.start(2000)
     overlay.repaint()
 
