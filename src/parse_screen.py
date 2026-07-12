@@ -135,12 +135,12 @@ def _hole_center(hole: Hole) -> tuple[float, float]:
 # Calculates scale from detected holes and the XML reference.
 def _scale_from_reference(
     scale_path: str | Path, holes: list[Hole]
-) -> dict[str, float]:
+) -> Scale:
     byLabel = _holes_by_label(holes)
     root = ElementTree.parse(scale_path).getroot()
     reference = root.find("reference")
     if reference is None:
-        return {"x": 1.0, "y": 1.0}
+        return Scale(x=1.0, y=1.0)
 
     refHoles = {
         node.attrib["label"]: _parse_relative_point(node.attrib["offset"])
@@ -172,17 +172,15 @@ def _scale_from_reference(
     if referenceWidth == 0 or referenceHeight == 0:
         raise ValueError("Border reference width and height must be non-zero.")
 
-    return {
-        Scale(
-            x=float((detectedTopRightX - detectedTopLeftX) / referenceWidth),
-            y=float((detectedBottomLeftY - detectedTopLeftY) / referenceHeight)
-        )
-    }
+    return Scale(
+        x=float((detectedTopRightX - detectedTopLeftX) / referenceWidth),
+        y=float((detectedBottomLeftY - detectedTopLeftY) / referenceHeight),
+    )
 
 
 # Loads the wall line positions from the border XML.
 def _load_wall_lines(
-    border_path: str | Path, holes: list[Hole], scale: dict[str, float]
+    border_path: str | Path, holes: list[Hole], scale: Scale
 ) -> list[Line]:
     byLabel = _holes_by_label(holes)
     originX, originY = _hole_center(byLabel["top_left"])
@@ -196,12 +194,12 @@ def _load_wall_lines(
             Line(
                 label=node.attrib["label"],
                 start=Point(
-                    x=int(round(originX + startDx * scale["x"])),
-                    y=int(round(originY + startDy * scale["y"])),
+                    x=int(round(originX + startDx * scale.x)),
+                    y=int(round(originY + startDy * scale.y)),
                 ),
                 end=Point(
-                    x=int(round(originX + endDx * scale["x"])),
-                    y=int(round(originY + endDy * scale["y"])),
+                    x=int(round(originX + endDx * scale.x)),
+                    y=int(round(originY + endDy * scale.y)),
                 ),
             )
         )
@@ -210,7 +208,7 @@ def _load_wall_lines(
 
 
 # Calculates the overall table bounds from the wall lines.
-def _table_bounds_from_lines(lines: list[Line]) -> dict[str, int]:
+def _table_bounds_from_lines(lines: list[Line]) -> Bounds:
     xs = [
         point.x
         for line in lines
@@ -221,25 +219,23 @@ def _table_bounds_from_lines(lines: list[Line]) -> dict[str, int]:
         for line in lines
         for point in (line.start, line.end)
     ]
-    return {
-        Bounds(
-            left=min(xs),
-            right=max(xs),
-            top=min(ys),
-            bottom=max(ys)
-        )
-    }
+    return Bounds(
+        left=min(xs),
+        right=max(xs),
+        top=min(ys),
+        bottom=max(ys),
+    )
 
 
 # Loads the scaled cue-ball radius from XML.
-def _load_ball_radius(ball_path: str | Path, scale: dict[str, float]) -> int:
+def _load_ball_radius(ball_path: str | Path, scale: Scale) -> int:
     root = ElementTree.parse(ball_path).getroot()
     cueBall = root.find("cue_ball")
     if cueBall is None or "radius" not in cueBall.attrib:
         raise ValueError(f"Expected <cue_ball radius=\"...\" /> in {ball_path}.")
 
     baseRadius = float(cueBall.attrib["radius"])
-    scaledRadius = baseRadius * ((scale["x"] + scale["y"]) / 2)
+    scaledRadius = baseRadius * ((scale.x + scale.y) / 2)
     return max(2, int(round(scaledRadius)))
 
 
@@ -247,7 +243,7 @@ def _load_ball_radius(ball_path: str | Path, scale: dict[str, float]) -> int:
 def _load_shot_targets(
     targets_path: str | Path,
     holes: list[Hole],
-    scale: dict[str, float],
+    scale: Scale,
 ) -> list[Target]:
     targetsPath = Path(targets_path)
     if not targetsPath.exists():
@@ -266,8 +262,8 @@ def _load_shot_targets(
                 label=label,
                 kind="target",
                 center=Point(
-                    x=float(originX + dx * scale["x"]),
-                    y=float(originY + dy * scale["y"]),
+                    x=float(originX + dx * scale.x),
+                    y=float(originY + dy * scale.y),
                 ),
             )
         )
@@ -325,7 +321,7 @@ def _line_by_label(lines: list[Line], label: str) -> Line | None:
 # Limits ball search to the table interior away from pockets.
 def _inside_search_mask(
     shape: tuple[int, int],
-    bounds: dict[str, int],
+    bounds: Bounds,
     lines: list[Line],
     holes: list[Hole],
     radius: int,
@@ -337,19 +333,19 @@ def _inside_search_mask(
     leftLine = _line_by_label(lines, "left_upper") or _line_by_label(lines, "left_lower")
     rightLine = _line_by_label(lines, "right_upper") or _line_by_label(lines, "right_lower")
 
-    topEdge = bounds["top"]
+    topEdge = bounds.top
     if topLine is not None:
         topEdge = max(topLine.start.y, topLine.end.y)
 
-    bottomEdge = bounds["bottom"]
+    bottomEdge = bounds.bottom
     if bottomLine is not None:
         bottomEdge = min(bottomLine.start.y, bottomLine.end.y)
 
-    leftEdge = bounds["left"]
+    leftEdge = bounds.left
     if leftLine is not None:
         leftEdge = max(leftLine.start.x, leftLine.end.x)
 
-    rightEdge = bounds["right"]
+    rightEdge = bounds.right
     if rightLine is not None:
         rightEdge = min(rightLine.start.x, rightLine.end.x)
 

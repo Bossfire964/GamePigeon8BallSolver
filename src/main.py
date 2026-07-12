@@ -12,10 +12,11 @@ from find_shot import (
     find_valid_shots,
 )
 from parse_screen import TARGETS_XML, parse_screen
+from templates.shot_template import Shot
 
 
 # Picks a valid shot after skipping earlier options.
-def pick_skipped_shot(valid_shots: list[dict], skip: int = 0) -> dict | None:
+def pick_skipped_shot(valid_shots: list[Shot], skip: int = 0) -> Shot | None:
     if not valid_shots:
         return None
     if skip < 0:
@@ -51,11 +52,11 @@ def run_pipeline(
         else pick_smallest_bounces
     )
     shotKwargs = {"max_bounces": effectiveMaxBounces}
-    validShots = find_valid_shots(parseResultDict, group, **shotKwargs)
+    validShots = find_valid_shots(parseResult, group, **shotKwargs)
     if effectivePickSmallestBounces:
-        validShots = sorted(validShots, key=lambda shot: shot.get("bounces", 0))
+        validShots = sorted(validShots, key=lambda shot: shot.bounces)
     else:
-        validShots = sorted(validShots, key=lambda shot: shot.get("bounces", 0), reverse=True)
+        validShots = sorted(validShots, key=lambda shot: shot.bounces, reverse=True)
 
     selectedShot = pick_skipped_shot(validShots, skip)
 
@@ -74,7 +75,7 @@ def run_pipeline(
         "pick_smallest_bounces": effectivePickSmallestBounces,
         "skip": skip,
         "valid_shot_count": len(validShots),
-        "selected_shot": selectedShot,
+        "selected_shot": None if selectedShot is None else selectedShot.getAllElements(),
         "parse_result": parseResultDict,
     }
 
